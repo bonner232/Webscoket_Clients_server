@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WebSocket Control Panel</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; }
+    h1, h2 { margin-bottom: 10px; }
+    input, button { padding: 8px; margin: 5px; }
+    #log { margin-top: 20px; background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; }
+    .hidden { display: none; }
+    #admin-controls button { margin-right: 10px; }
+  </style>
+</head>
+<body>
+
+  <h1>Admin Login</h1>
+  <input type="text" id="login" placeholder="Type login message (e.g., LOGIN admin 1234)">
+  <button onclick="sendLogin()">Send Login</button>
+
+  <h1>Movement Controls</h1>
+  <div>
+    <button onclick="moveTo(10)">Move to 10</button>
+    <button onclick="moveTo(20)">Move to 20</button>
+    <button onclick="moveTo(30)">Move to 30</button>
+    <button onclick="moveTo(40)">Move to 40</button>
+    <button onclick="moveTo(50)">Move to 50</button>
+  </div>
+
+  <div id="admin-controls" class="hidden">
+    <h2>Admin Controls</h2>
+    <button onmousedown="startSending('UP')" onmouseup="stopSending()" onmouseleave="stopSending()">⬆️ Up</button>
+    <button onmousedown="startSending('DOWN')" onmouseup="stopSending()" onmouseleave="stopSending()">⬇️ Down</button>
+    <button onmousedown="startSending('LEFT')" onmouseup="stopSending()" onmouseleave="stopSending()">⬅️ Left</button>
+    <button onmousedown="startSending('RIGHT')" onmouseup="stopSending()" onmouseleave="stopSending()">➡️ Right</button>
+  </div>
+
+  <h2>Status</h2>
+  <p id="status">Disconnected</p>
+
+  <h2>WebSocket Log</h2>
+  <div id="log"></div>
+
+  <script>
+    const socket = new WebSocket('ws://192.168.1.68:6789');
+    const logBox = document.getElementById('log');
+    const status = document.getElementById('status');
+    const adminControls = document.getElementById('admin-controls');
+    let commandInterval = null;
+
+    socket.onopen = () => {
+      status.textContent = "Connected to WebSocket";
+      log("✅ WebSocket connection established.");
+    };
+
+    socket.onmessage = (event) => {
+      log("Server: " + event.data);
+
+      if (event.data === "LOGIN_SUCCESS") {
+        adminControls.classList.remove("hidden");
+        log("🔓 Admin access granted.");
+      } else if (event.data === "LOGIN_FAILED") {
+        log("❌ Admin login failed.");
+      }
+    };
+
+    socket.onclose = () => {
+      status.textContent = "Disconnected";
+      log("❌ WebSocket connection closed.");
+    };
+
+    function log(message) {
+      const p = document.createElement('p');
+      p.textContent = message;
+      logBox.appendChild(p);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function sendLogin() {
+      const loginMsg = document.getElementById('login').value;
+      if (loginMsg.trim() !== "") {
+        socket.send(loginMsg);
+        log("You: " + loginMsg);
+      }
+    }
+
+    function moveTo(position) {
+      const msg = `move to ${position}`;
+      socket.send(msg);
+      log(`You: ${msg}`);
+    }
+
+    function sendCommand(direction) {
+      const msg = `MOVE_${direction}`;
+      socket.send(msg);
+      log(`You (Admin): ${msg}`);
+    }
+
+    function startSending(direction) {
+      if (commandInterval) return;
+      sendCommand(direction); // send once immediately
+      commandInterval = setInterval(() => sendCommand(direction), 100); // keep sending
+    }
+
+    function stopSending() {
+      clearInterval(commandInterval);
+      commandInterval = null;
+    }
+  </script>
+</body>
+</html>
