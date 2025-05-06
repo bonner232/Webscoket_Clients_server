@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WebSocket Control Panel</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; }
+    h1, h2 { margin-bottom: 10px; }
+    input, button { padding: 8px; margin: 5px; }
+    #log { margin-top: 20px; background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; }
+    .hidden { display: none; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <h1>Admin Login</h1>
+  <input type="text" id="login" placeholder="Type login message (e.g., LOGIN admin 1234)">
+  <button onclick="sendLogin()">Send Login</button>
+
+  <h2>Status</h2>
+  <p id="status">Disconnected</p>
+
+  <h2>Toggle Buttons</h2>
+  <div id="toggle-buttons">
+    <button id="btn1" onclick="toggleButton(1)">Button 1</button>
+    <button id="btn2" onclick="toggleButton(2)">Button 2</button>
+    <button id="btn3" onclick="toggleButton(3)">Button 3</button>
+    <button id="btn4" onclick="toggleButton(4)">Button 4</button>
+    <button id="btn5" onclick="toggleButton(5)">Button 5</button>
+  </div>
+
+  <h2>WebSocket Log</h2>
+  <div id="log"></div>
+
+  <script>
+    const socket = new WebSocket('ws://192.168.2.100:6789'); // Ensure this is the correct WebSocket URL
+    const logBox = document.getElementById('log');
+    const status = document.getElementById('status');
+
+    // When WebSocket is open, update status
+    socket.onopen = () => {
+      status.textContent = "Connected to WebSocket";
+      log("✅ WebSocket connection established.");
+    };
+
+socket.onmessage = (event) => {
+  log(`📩 Raw message: ${event.data}`);
+
+  try {
+    const data = JSON.parse(event.data);
+    log("✅ JSON parsed successfully.");
+
+    // Extract button states directly from top-level fields
+    const buttonStates = {};
+    for (let i = 1; i <= 5; i++) {
+      const key = `btn${i}`;
+      if (key in data) {
+        buttonStates[key] = data[key];
+      }
+    }
+
+    if (Object.keys(buttonStates).length > 0) {
+      log("🔍 Extracted button states:");
+      log(JSON.stringify(buttonStates, null, 2));
+      updateButtonStates(buttonStates);
+    } else {
+      log("ℹ️ No button states found in top-level JSON.");
+    }
+
+  } catch (e) {
+    log("⚠️ Error parsing JSON: " + e.message);
+  }
+};
+
+function updateButtonStates(states) {
+  for (let i = 1; i <= 5; i++) {
+    const btnId = `btn${i}`;
+    const btn = document.getElementById(btnId);
+
+    if (btn && typeof states[btnId] === 'boolean') {
+      btn.disabled = !states[btnId]; // Disable if false
+      log(`🔧 ${btnId} is now ${states[btnId] ? "enabled ✅" : "disabled ❌"}`);
+    } else {
+      log(`⚠️ ${btnId} is missing or not a boolean in server response.`);
+    }
+  }
+}
+
+// Function to enable/disable buttons based on JSON with logging
+function updateButtonStates(states) {
+  for (let i = 1; i <= 5; i++) {
+    const btnId = `btn${i}`;
+    const btn = document.getElementById(btnId);
+
+    if (btn && typeof states[btnId] === 'boolean') {
+      btn.disabled = !states[btnId]; // Disable if false
+      log(`🔧 ${btnId} is now ${states[btnId] ? "enabled ✅" : "disabled ❌"}`);
+    } else {
+      log(`⚠️ ${btnId} state is missing or not a boolean.`);
+    }
+  }
+}
+
+    // When WebSocket is closed, update status
+    socket.onclose = () => {
+      status.textContent = "Disconnected";
+      log("❌ WebSocket connection closed.");
+    };
+
+    // Function to log messages
+    function log(message) {
+      const p = document.createElement('p');
+      p.textContent = message;
+      logBox.appendChild(p);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+
+    // Function to send the login message
+    function sendLogin() {
+      const loginMsg = document.getElementById('login').value;
+      if (loginMsg.trim() !== "") {
+        socket.send(loginMsg);
+        log("You: " + loginMsg);
+      }
+    }
+
+    // Function to toggle a button's state (selected or not)
+    function toggleButton(buttonId) {
+      // Disable all buttons first
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById(`btn${i}`);
+        btn.disabled = false;  // Enable all buttons first
+      }
+
+      // Disable the selected button
+      const selectedButton = document.getElementById(`btn${buttonId}`);
+      selectedButton.disabled = true;
+
+      // Send a JSON message with the selected button's ID
+      sendJSON(buttonId);
+    }
+
+    // Function to send a JSON message with the button ID and additional details
+    function sendJSON(buttonId) {
+      const data = {
+        message: "Button selected",
+        status: "success",
+        timestamp: new Date().toISOString(),
+        button_id: `btn${buttonId}`,  // Send the button ID as part of the JSON
+        additional_info: "Button pressed to initiate action"
+      };
+
+      // Send the JSON to the WebSocket server
+      socket.send(JSON.stringify(data));
+
+    }
+
+    // Function to disable a button based on the array_id from the server
+    function disableButton(arrayId) {
+      const buttonToDisable = document.getElementById(`btn${arrayId}`);
+      if (buttonToDisable) {
+        buttonToDisable.disabled = true;
+        log(`Button ${arrayId} is disabled as it's already in use.`);
+      }
+    }
+  </script>
+
+</body>
+</html>
