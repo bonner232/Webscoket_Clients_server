@@ -10,7 +10,7 @@
     input, button { padding: 8px; margin: 5px; }
     #log { margin-top: 20px; background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; }
     .hidden { display: none; }
-    #admin-controls button { margin-right: 10px; }
+    button:disabled { background-color: #ccc; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -19,62 +19,113 @@
   <input type="text" id="login" placeholder="Type login message (e.g., LOGIN admin 1234)">
   <button onclick="sendLogin()">Send Login</button>
 
-  <h1>Movement Controls</h1>
-  <div>
-    <button onclick="moveTo(10)">Move to 10</button>
-    <button onclick="moveTo(20)">Move to 20</button>
-    <button onclick="moveTo(30)">Move to 30</button>
-    <button onclick="moveTo(40)">Move to 40</button>
-    <button onclick="moveTo(50)">Move to 50</button>
-  </div>
-
-  <h1>Custom JSON</h1>
-  <div>
-    <button onclick="sendJsonButton1()">Send JSON for Button 1</button>
-  </div>
-
-  <div id="admin-controls" class="hidden">
-    <h2>Admin Controls</h2>
-    <button onmousedown="startSending('UP')" onmouseup="stopSending()" onmouseleave="stopSending()">⬆️ Up</button>
-    <button onmousedown="startSending('DOWN')" onmouseup="stopSending()" onmouseleave="stopSending()">⬇️ Down</button>
-    <button onmousedown="startSending('LEFT')" onmouseup="stopSending()" onmouseleave="stopSending()">⬅️ Left</button>
-    <button onmousedown="startSending('RIGHT')" onmouseup="stopSending()" onmouseleave="stopSending()">➡️ Right</button>
-  </div>
-
   <h2>Status</h2>
   <p id="status">Disconnected</p>
+
+  <h2>Wagen Auswahl</h2>
+  <div id="toggle-buttons">
+    <button id="btn1" onclick="toggleButton(1)">Wagen 1</button>
+    <button id="btn2" onclick="toggleButton(2)">Wagen 2</button>
+    <button id="btn3" onclick="toggleButton(3)">Wagen 3</button>
+    <button id="btn4" onclick="toggleButton(4)">Wagen 4</button>
+    <button id="btn5" onclick="toggleButton(5)">Wagen 5</button>
+  </div>
+
+  <h2>Move Commands</h2>
+  <div id="move-buttons">
+    <button onclick="sendMoveCommand(10)">Move to 10</button>
+    <button onclick="sendMoveCommand(20)">Move to 20</button>
+    <button onclick="sendMoveCommand(30)">Move to 30</button>
+    <button onclick="sendMoveCommand(40)">Move to 40</button>
+    <button onclick="sendMoveCommand(50)">Move to 50</button>
+  </div>
 
   <h2>WebSocket Log</h2>
   <div id="log"></div>
 
   <script>
-    const socket = new WebSocket('ws://192.168.2.100:6789');
+    const socket = new WebSocket('ws://192.168.2.100:6789'); // Ensure this is the correct WebSocket URL
     const logBox = document.getElementById('log');
     const status = document.getElementById('status');
-    const adminControls = document.getElementById('admin-controls');
-    let commandInterval = null;
 
+    // When WebSocket is open, update status
     socket.onopen = () => {
       status.textContent = "Connected to WebSocket";
       log("✅ WebSocket connection established.");
+
+      // Send a request for initial button states
+      const initRequest = { request: "init_state" };
+      socket.send(JSON.stringify(initRequest));
+      log("📤 Sent init_state request to server.");
     };
 
     socket.onmessage = (event) => {
-      log("Server: " + event.data);
+      log(`📩 Raw message: ${event.data}`);
 
-      if (event.data === "LOGIN_SUCCESS") {
-        adminControls.classList.remove("hidden");
-        log("🔓 Admin access granted.");
-      } else if (event.data === "LOGIN_FAILED") {
-        log("❌ Admin login failed.");
+      try {
+        const data = JSON.parse(event.data);
+        log("✅ JSON parsed successfully.");
+
+        // Extract button states for both toggle (btn1, btn2, ...) and move buttons
+        const buttonStates = {};
+        for (let i = 1; i <= 5; i++) {
+          const key = `btn${i}`;
+          if (key in data) {
+            buttonStates[key] = data[key];
+          }
+        }
+
+        // Handle move buttons (move_to_10, move_to_20, ...)
+        for (let i = 10; i <= 50; i += 10) {
+          const key = `move_to_${i}`;
+          if (key in data) {
+            buttonStates[key] = data[key];
+          }
+        }
+
+        if (Object.keys(buttonStates).length > 0) {
+          log("🔍 Extracted button states:");
+          log(JSON.stringify(buttonStates, null, 2));
+          updateButtonStates(buttonStates);
+        } else {
+          log("ℹ️ No button states found in top-level JSON.");
+        }
+
+      } catch (e) {
+        log("⚠️ Error parsing JSON: " + e.message);
       }
     };
 
+    // Function to update button states based on server response
+    function updateButtonStates(states) {
+      // Update toggle buttons
+      for (let i = 1; i <= 5; i++) {
+        const btnId = `btn${i}`;
+        const btn = document.getElementById(btnId);
+        if (btn && typeof states[btnId] === 'boolean') {
+          btn.disabled = !states[btnId];
+          log(`🔧 ${btnId} is now ${states[btnId] ? "enabled ✅" : "disabled ❌"}`);
+        }
+      }
+
+      // Update move buttons
+      for (let i = 10; i <= 50; i += 10) {
+        const btnId = `move_to_${i}`;
+        const btn = document.querySelector(`#move-buttons button:nth-child(${i / 10})`);
+        if (btn && typeof states[btnId] === 'boolean') {
+          btn.disabled = !states[btnId];
+          log(`🔧 Move to ${i} button is now ${states[btnId] ? "enabled ✅" : "disabled ❌"}`);
+        }
+      }
+    }
+
+    // When WebSocket is closed, update status
     socket.onclose = () => {
       status.textContent = "Disconnected";
       log("❌ WebSocket connection closed.");
     };
 
+    // Function to log messages
     function log(message) {
       const p = document.createElement('p');
       p.textContent = message;
@@ -82,6 +133,7 @@
       logBox.scrollTop = logBox.scrollHeight;
     }
 
+    // Function to send the login message
     function sendLogin() {
       const loginMsg = document.getElementById('login').value;
       if (loginMsg.trim() !== "") {
@@ -90,38 +142,50 @@
       }
     }
 
-    function moveTo(position) {
-      const msg = `move to ${position}`;
-      socket.send(msg);
-      log(`You: ${msg}`);
+    // Function to toggle a button's state (selected or not)
+    function toggleButton(buttonId) {
+      // Disable all buttons first
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById(`btn${i}`);
+        btn.disabled = false;  // Enable all buttons first
+      }
+
+      // Disable the selected button
+      const selectedButton = document.getElementById(`btn${buttonId}`);
+      selectedButton.disabled = true;
+
+      // Send a JSON message with the selected button's ID
+      sendJSON(buttonId);
     }
 
-    function sendCommand(direction) {
-      const msg = `MOVE_${direction}`;
-      socket.send(msg);
-      log(`You (Admin): ${msg}`);
-    }
-
-    function startSending(direction) {
-      if (commandInterval) return;
-      sendCommand(direction); // send once immediately
-      commandInterval = setInterval(() => sendCommand(direction), 100); // keep sending
-    }
-
-    function stopSending() {
-      clearInterval(commandInterval);
-      commandInterval = null;
-    }
-
-    function sendJsonButton1() {
-      const jsonData = {
-        buttonId: 1,
-        placeholder: "future_data"
+    // Function to send a JSON message with the button ID and additional details
+    function sendJSON(buttonId) {
+      const data = {
+        message: "Button selected",
+        status: "success",
+        timestamp: new Date().toISOString(),
+        button_id: `btn${buttonId}`,  // Send the button ID as part of the JSON
+        additional_info: "Button pressed to initiate action"
       };
 
-      socket.send(JSON.stringify(jsonData));
-      log("You (JSON): " + JSON.stringify(jsonData));
+      // Send the JSON to the WebSocket server
+      socket.send(JSON.stringify(data));
+    }
+
+    // Function to send move command with the position
+    function sendMoveCommand(position) {
+      const data = {
+        message: "Move command issued",
+        status: "pending",
+        timestamp: new Date().toISOString(),
+        move_to: position,  // custom field
+        command_type: "move"
+      };
+
+      socket.send(JSON.stringify(data));
+      log(`📤 Sent move command to ${position}`);
     }
   </script>
+
 </body>
 </html>
