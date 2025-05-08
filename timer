@@ -1,0 +1,51 @@
+import threading
+import time
+
+class ResettableTimer:
+    def __init__(self, duration_sec):
+        self.duration_sec = duration_sec
+        self.thread = None
+        self.reset_event = threading.Event()
+        self.stop_event = threading.Event()
+
+    def _run_timer(self):
+        while not self.stop_event.is_set():
+            start_time = time.time()
+            while time.time() - start_time < self.duration_sec:
+                if self.reset_event.is_set():
+                    print("\n🔄 Timer reset!")
+                    self.reset_event.clear()
+                    break
+                remaining = int(self.duration_sec - (time.time() - start_time))
+                print(f"Time left: {remaining} seconds", end='\r')
+                time.sleep(1)
+            else:
+                print("\n⏰ Timer finished!")
+                return
+
+    def start_or_reset(self):
+        if self.thread is None or not self.thread.is_alive():
+            self.stop_event.clear()
+            self.thread = threading.Thread(target=self._run_timer)
+            self.thread.start()
+        else:
+            self.reset_event.set()
+
+    def stop(self):
+        self.stop_event.set()
+        self.reset_event.set()
+        if self.thread:
+            self.thread.join()
+
+# Usage:
+timer = ResettableTimer(120)
+
+# Start the timer
+timer.start_or_reset()
+
+# Simulate calling reset after some time
+time.sleep(5)
+timer.start_or_reset()  # Resets the timer
+
+# Stop after testing
+# timer.stop()
