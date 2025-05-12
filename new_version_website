@@ -5,12 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>WebSocket Control Panel</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 30px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100vh;
+      justify-content: center;
+      background-color: #f0f0f0;
+    }
+
     h1, h2 { margin-bottom: 10px; }
     input, button { padding: 8px; margin: 5px; }
-    #log { margin-top: 20px; background: #f4f4f4; padding: 10px; height: 200px; overflow-y: scroll; border: 1px solid #ccc; }
+
+    #log {
+      margin-top: 20px;
+      background: #f4f4f4;
+      padding: 10px;
+      height: 200px;
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      width: 90%;
+      max-width: 600px;
+    }
+
     .hidden { display: none; }
     button:disabled { background-color: #ccc; cursor: not-allowed; }
+    .selected { background-color: #aaf !important; }
+
+    #joystick-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 20px;
+      width: 100%;
+      height: 100%;
+    }
+
+    #joystick {
+      width: 150px;
+      height: 150px;
+      background: #ddd;
+      border-radius: 50%;
+      position: relative;
+      touch-action: none;
+      user-select: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #stick {
+      width: 50px;
+      height: 50px;
+      background: #444;
+      border-radius: 50%;
+      position: absolute;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -22,94 +75,85 @@
   <h2>Status</h2>
   <p id="status">Disconnected</p>
 
-  <h2>Toggle Buttons</h2>
+  <h2>Wagen Auswahl</h2>
   <div id="toggle-buttons">
-    <button id="btn1" onclick="toggleButton(1)">Button 1</button>
-    <button id="btn2" onclick="toggleButton(2)">Button 2</button>
-    <button id="btn3" onclick="toggleButton(3)">Button 3</button>
-    <button id="btn4" onclick="toggleButton(4)">Button 4</button>
-    <button id="btn5" onclick="toggleButton(5)">Button 5</button>
+    <button id="192.168.2.101" onclick="selectWagen('192.168.2.101')">Wagen 1</button>
+    <button id="192.168.2.102" onclick="selectWagen('192.168.2.102')">Wagen 2</button>
+    <button id="192.168.2.103" onclick="selectWagen('192.168.2.103')">Wagen 3</button>
+    <button id="192.168.2.104" onclick="selectWagen('192.168.2.104')">Wagen 4</button>
+    <button id="192.168.2.105" onclick="selectWagen('192.168.2.105')">Wagen 5</button>
+  </div>
+
+  <h2>Move Commands</h2>
+  <div id="move-buttons">
+    <button onclick="sendMoveCommand(10)">Move to 10</button>
+    <button onclick="sendMoveCommand(20)">Move to 20</button>
+    <button onclick="sendMoveCommand(30)">Move to 30</button>
+    <button onclick="sendMoveCommand(40)">Move to 40</button>
+    <button onclick="sendMoveCommand(0)">Move to 0</button>
+  </div>
+  <h2>Calibration</h2>
+<div id="calibrate-buttons">
+  <button onclick="sendCalibrateFront()">Calibrate Front</button>
+  <button onclick="sendCalibrateBack()">Calibrate Back</button>
+</div>
+
+  <h2>Joystick Control</h2>
+  <div id="joystick-container">
+    <div id="joystick">
+      <div id="stick"></div>
+    </div>
   </div>
 
   <h2>WebSocket Log</h2>
   <div id="log"></div>
 
   <script>
-    const socket = new WebSocket('ws://192.168.2.100:6789'); // Ensure this is the correct WebSocket URL
+  let joystickInterval = null;
+
+    const socket = new WebSocket('ws://192.168.2.100:6789');
     const logBox = document.getElementById('log');
     const status = document.getElementById('status');
 
-    // When WebSocket is open, update status
+    const buttonStates = {
+      btn1: false,
+      btn2: false,
+      btn3: false,
+      btn4: false,
+      btn5: false,
+    };
+
+    let selectedWagen = null;
+
     socket.onopen = () => {
       status.textContent = "Connected to WebSocket";
       log("✅ WebSocket connection established.");
+      socket.send(JSON.stringify({ start: "START" }));
+
+
     };
 
-socket.onmessage = (event) => {
-  log(`📩 Raw message: ${event.data}`);
-
-  try {
-    const data = JSON.parse(event.data);
-    log("✅ JSON parsed successfully.");
-
-    // Extract button states directly from top-level fields
-    const buttonStates = {};
-    for (let i = 1; i <= 5; i++) {
-      const key = `btn${i}`;
-      if (key in data) {
-        buttonStates[key] = data[key];
+    socket.onmessage = (event) => {
+      log("📩 Message from server: " + event.data);
+      try {
+        const data = JSON.parse(event.data);
+        Object.entries(data).forEach(([ip, isEnabled]) => {
+          const button = document.getElementById(ip);
+          if (button) {
+            button.disabled = !isEnabled;
+            log(`🔄 Button for ${ip} is now ${isEnabled ? "enabled" : "disabled"}`);
+          }
+        });
+      } catch (e) {
+        log("⚠️ Error parsing JSON: " + e.message);
       }
-    }
+    };
 
-    if (Object.keys(buttonStates).length > 0) {
-      log("🔍 Extracted button states:");
-      log(JSON.stringify(buttonStates, null, 2));
-      updateButtonStates(buttonStates);
-    } else {
-      log("ℹ️ No button states found in top-level JSON.");
-    }
-
-  } catch (e) {
-    log("⚠️ Error parsing JSON: " + e.message);
-  }
-};
-
-function updateButtonStates(states) {
-  for (let i = 1; i <= 5; i++) {
-    const btnId = `btn${i}`;
-    const btn = document.getElementById(btnId);
-
-    if (btn && typeof states[btnId] === 'boolean') {
-      btn.disabled = !states[btnId]; // Disable if false
-      log(`🔧 ${btnId} is now ${states[btnId] ? "enabled ✅" : "disabled ❌"}`);
-    } else {
-      log(`⚠️ ${btnId} is missing or not a boolean in server response.`);
-    }
-  }
-}
-
-// Function to enable/disable buttons based on JSON with logging
-function updateButtonStates(states) {
-  for (let i = 1; i <= 5; i++) {
-    const btnId = `btn${i}`;
-    const btn = document.getElementById(btnId);
-
-    if (btn && typeof states[btnId] === 'boolean') {
-      btn.disabled = !states[btnId]; // Disable if false
-      log(`🔧 ${btnId} is now ${states[btnId] ? "enabled ✅" : "disabled ❌"}`);
-    } else {
-      log(`⚠️ ${btnId} state is missing or not a boolean.`);
-    }
-  }
-}
-
-    // When WebSocket is closed, update status
     socket.onclose = () => {
       status.textContent = "Disconnected";
       log("❌ WebSocket connection closed.");
     };
 
-    // Function to log messages
     function log(message) {
       const p = document.createElement('p');
       p.textContent = message;
@@ -117,8 +161,6 @@ function updateButtonStates(states) {
       logBox.scrollTop = logBox.scrollHeight;
     }
 
-
-    // Function to send the login message
     function sendLogin() {
       const loginMsg = document.getElementById('login').value;
       if (loginMsg.trim() !== "") {
@@ -127,46 +169,137 @@ function updateButtonStates(states) {
       }
     }
 
-    // Function to toggle a button's state (selected or not)
-    function toggleButton(buttonId) {
-      // Disable all buttons first
-      for (let i = 1; i <= 5; i++) {
-        const btn = document.getElementById(`btn${i}`);
-        btn.disabled = false;  // Enable all buttons first
-      }
-
-      // Disable the selected button
-      const selectedButton = document.getElementById(`btn${buttonId}`);
-      selectedButton.disabled = true;
-
-      // Send a JSON message with the selected button's ID
-      sendJSON(buttonId);
+    function selectWagen(ip) {
+      selectedWagen = ip;
+      const buttons = document.querySelectorAll("#toggle-buttons button");
+      buttons.forEach(btn => {
+        btn.classList.toggle("selected", btn.id === ip);
+      });
+      log(`🛒 Selected Wagen: ${ip}`);
     }
 
-    // Function to send a JSON message with the button ID and additional details
-    function sendJSON(buttonId) {
-      const data = {
-        message: "Button selected",
-        status: "success",
-        timestamp: new Date().toISOString(),
-        button_id: `btn${buttonId}`,  // Send the button ID as part of the JSON
-        additional_info: "Button pressed to initiate action"
+    function sendMoveCommand(position) {
+      if (!selectedWagen) {
+        alert("Please select a Wagen first.");
+        return;
+      }
+
+      const payload = {
+        ...buttonStates,
+        button_id: selectedWagen,
+        move: position,
+        from: "ip",
+        cmd: 1
+        // 1 is move to
+        // 2 is xy
+        // xzy
+
       };
 
-      // Send the JSON to the WebSocket server
-      socket.send(JSON.stringify(data));
-
+      socket.send(JSON.stringify(payload));
+      log(`📤 Sent: ${JSON.stringify(payload)}`);
     }
 
-    // Function to disable a button based on the array_id from the server
-    function disableButton(arrayId) {
-      const buttonToDisable = document.getElementById(`btn${arrayId}`);
-      if (buttonToDisable) {
-        buttonToDisable.disabled = true;
-        log(`Button ${arrayId} is disabled as it's already in use.`);
+    // Joystick logic
+    const joystick = document.getElementById("joystick");
+    const stick = document.getElementById("stick");
+    let dragging = false;
+    let joyX = 0;
+    let joyY = 0;
+
+    joystick.addEventListener("mousedown", startDrag);
+    document.addEventListener("mousemove", onDrag);
+    document.addEventListener("mouseup", stopDrag);
+
+function startDrag(e) {
+  dragging = true;
+  onDrag(e);
+
+  if (!joystickInterval) {
+    joystickInterval = setInterval(() => {
+      if (!selectedWagen) return;
+      if (joyX === 0 && joyY === 0) return; // ✅ Don't send if both are 0
+
+      const payload = {
+        cmd: 2,
+        x: joyX*-5,
+        y: joyY*-5,
+        button_id: selectedWagen
+      };
+      socket.send(JSON.stringify(payload));
+      log(`🎮 Joystick: ${JSON.stringify(payload)}`);
+    }, 200);
+  }
+}
+
+    function stopDrag() {
+      dragging = false;
+      joyX = 0;
+      joyY = 0;
+      centerStick();
+    }
+
+    function centerStick() {
+      const center = joystick.clientWidth / 2 - stick.clientWidth / 2;
+      stick.style.left = `${center}px`;
+      stick.style.top = `${center}px`;
+    }
+
+    function onDrag(e) {
+      if (!dragging) return;
+
+      const rect = joystick.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = e.clientX - centerX;
+      const dy = e.clientY - centerY;
+
+      const radius = rect.width / 2 - 25; // 25 = half of stick size (50px)
+      let dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Clamp to circular boundary
+      let clampedX = dx;
+      let clampedY = dy;
+
+      if (dist > radius) {
+        const angle = Math.atan2(dy, dx);
+        clampedX = Math.cos(angle) * radius;
+        clampedY = Math.sin(angle) * radius;
       }
-    }
-  </script>
 
+      // Move stick within container
+      const stickLeft = 75 + clampedX - 25; // 75 = center of 150px joystick
+      const stickTop = 75 + clampedY - 25;
+
+      stick.style.left = `${stickLeft}px`;
+      stick.style.top = `${stickTop}px`;
+
+      // Normalize to -100..100
+      joyX = Math.round((clampedX / radius) * 100);
+      joyY = Math.round((clampedY / radius) * 100);
+    }
+    function sendCalibrateFront() {
+  if (!selectedWagen) {
+    alert("Please select a Wagen first.");
+    return;
+  }
+  const payload = { calibrateFront: true, button_id: selectedWagen };
+  socket.send(JSON.stringify(payload));
+  log(`📤 Sent: ${JSON.stringify(payload)}`);
+}
+
+function sendCalibrateBack() {
+  if (!selectedWagen) {
+    alert("Please select a Wagen first.");
+    return;
+  }
+  const payload = { calibrateBack: true, button_id: selectedWagen };
+  socket.send(JSON.stringify(payload));
+  log(`📤 Sent: ${JSON.stringify(payload)}`);
+}
+
+
+
+  </script>
 </body>
 </html>
