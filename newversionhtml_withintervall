@@ -90,7 +90,7 @@
     <button onclick="sendMoveCommand(20)">Move to 20</button>
     <button onclick="sendMoveCommand(30)">Move to 30</button>
     <button onclick="sendMoveCommand(40)">Move to 40</button>
-    <button onclick="sendMoveCommand(50)">Move to 50</button>
+    <button onclick="sendMoveCommand(0)">Move to 0</button>
   </div>
   <h2>Calibration</h2>
 <div id="calibrate-buttons">
@@ -109,6 +109,8 @@
   <div id="log"></div>
 
   <script>
+  let joystickInterval = null;
+
     const socket = new WebSocket('ws://192.168.2.100:6789');
     const logBox = document.getElementById('log');
     const status = document.getElementById('status');
@@ -126,7 +128,8 @@
     socket.onopen = () => {
       status.textContent = "Connected to WebSocket";
       log("✅ WebSocket connection established.");
-      socket.send("START");
+      socket.send(JSON.stringify({ start: "START" }));
+
 
     };
 
@@ -184,7 +187,7 @@
       const payload = {
         ...buttonStates,
         button_id: selectedWagen,
-        move_to: position,
+        move: position,
         from: "ip",
         cmd: 1
         // 1 is move to
@@ -208,10 +211,26 @@
     document.addEventListener("mousemove", onDrag);
     document.addEventListener("mouseup", stopDrag);
 
-    function startDrag(e) {
-      dragging = true;
-      onDrag(e);
-    }
+function startDrag(e) {
+  dragging = true;
+  onDrag(e);
+
+  if (!joystickInterval) {
+    joystickInterval = setInterval(() => {
+      if (!selectedWagen) return;
+      if (joyX === 0 && joyY === 0) return; // ✅ Don't send if both are 0
+
+      const payload = {
+        cmd: 2,
+        x: joyX*-5,
+        y: joyY*-5,
+        button_id: selectedWagen
+      };
+      socket.send(JSON.stringify(payload));
+      log(`🎮 Joystick: ${JSON.stringify(payload)}`);
+    }, 200);
+  }
+}
 
     function stopDrag() {
       dragging = false;
@@ -280,22 +299,7 @@ function sendCalibrateBack() {
 }
 
 
-    setInterval(() => {
-      if (!selectedWagen || socket.readyState !== WebSocket.OPEN) return;
 
-      const payload = {
-        ...buttonStates,
-        button_id: selectedWagen,
-        x: joyX,
-        y: joyY,
-        from: "ip",
-        move_to: "null",
-        cmd: 2
-      };
-
-      socket.send(JSON.stringify(payload));
-      log(`📤 Sent: ${JSON.stringify(payload)}`);
-    }, 1000);
   </script>
 </body>
 </html>
